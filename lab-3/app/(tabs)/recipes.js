@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, TextInput, FlatList, Image, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { getAllRecipes } from '../../db';
 
 export default function RecipesScreen() {
   const [query, setQuery] = useState('');
@@ -8,13 +9,11 @@ export default function RecipesScreen() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  // Fetch initial recipes or perform search
-  const fetchRecipes = async (searchQuery = '') => {
+  const fetchRecipes = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${searchQuery}`);
-      const data = await response.json();
-      setRecipes(data.meals || []);
+      const data = await getAllRecipes();
+      setRecipes(data);
     } catch (error) {
       console.error('Error fetching recipes:', error);
     } finally {
@@ -22,23 +21,45 @@ export default function RecipesScreen() {
     }
   };
 
-  useEffect(() => {
-    fetchRecipes('chicken'); // Default search
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchRecipes();
+    }, [])
+  );
 
   const handleSearch = () => {
-    fetchRecipes(query);
+    fetchRecipes();
   };
+
+  const filteredRecipes = recipes.filter((recipe) => {
+    const searchValue = query.trim().toLowerCase();
+
+    if (!searchValue) {
+      return true;
+    }
+
+    return [recipe.name, recipe.ingredients, recipe.instructions]
+      .filter(Boolean)
+      .some((field) => field.toLowerCase().includes(searchValue));
+  });
 
   const renderRecipe = ({ item }) => (
     <Pressable
       style={styles.card}
-      onPress={() => router.push(`/recipe/${item.idMeal}`)}
+      onPress={() => router.push(`/local-recipe/${item.id}`)}
     >
-      <Image source={{ uri: item.strMealThumb }} style={styles.image} />
+      {item.image ? (
+        <Image source={{ uri: item.image }} style={styles.image} />
+      ) : (
+        <View style={styles.placeholderImage}>
+          <Text style={styles.placeholderText}>No Image</Text>
+        </View>
+      )}
       <View style={styles.cardContent}>
-        <Text style={styles.title}>{item.strMeal}</Text>
-        <Text style={styles.category}>{item.strCategory}</Text>
+        <Text style={styles.title}>{item.name}</Text>
+        <Text style={styles.category} numberOfLines={2}>
+          {item.ingredients}
+        </Text>
       </View>
     </Pressable>
   );
@@ -62,8 +83,8 @@ export default function RecipesScreen() {
         <ActivityIndicator size="large" color="#0000ff" style={styles.loader} />
       ) : (
         <FlatList
-          data={recipes}
-          keyExtractor={(item) => item.idMeal}
+          data={filteredRecipes}
+          keyExtractor={(item) => item.id.toString()}
           renderItem={renderRecipe}
           contentContainerStyle={styles.list}
           ListEmptyComponent={<Text style={styles.emptyText}>No recipes found.</Text>}
@@ -131,6 +152,17 @@ const styles = StyleSheet.create({
   image: {
     width: 100,
     height: 100,
+  },
+  placeholderImage: {
+    width: 100,
+    height: 100,
+    backgroundColor: '#e0e0e0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  placeholderText: {
+    color: '#888',
+    fontSize: 12,
   },
   cardContent: {
     flex: 1,
